@@ -495,6 +495,226 @@ def design_network(input_dim, num_classes, seed=0):
 
     return model, metrics
 
-# Step 13 - improve_generalization (not yet solved)
-# TODO: implement
+# Step 13 - improve_generalization
+import numpy as np
+
+
+def improve_generalization(
+    baseline_model_fn,
+    x_train,
+    y_train,
+    x_val,
+    y_val,
+    seed=0
+):
+    """Improve held-out accuracy over an unregularized baseline."""
+
+    np.random.seed(seed)
+
+    x_train = np.asarray(x_train, dtype=float)
+    y_train = np.asarray(y_train, dtype=int)
+    x_val = np.asarray(x_val, dtype=float)
+    y_val = np.asarray(y_val, dtype=int)
+
+    if x_train.ndim != 2 or x_val.ndim != 2:
+        raise ValueError("Training and validation inputs must be 2-D")
+
+    if y_train.ndim != 1 or y_val.ndim != 1:
+        raise ValueError("Training and validation labels must be 1-D")
+
+    if len(x_train) != len(y_train):
+        raise ValueError("x_train and y_train must have the same length")
+
+    if len(x_val) != len(y_val):
+        raise ValueError("x_val and y_val must have the same length")
+
+    # ------------------------------------------------------------
+    # Helper: evaluate a model.
+    # ------------------------------------------------------------
+    def evaluate(model):
+        logits, _ = model["forward"](x_val)
+        predictions = np.argmax(logits, axis=1)
+        accuracy = float(np.mean(predictions == y_val))
+        return accuracy, predictions
+
+    # ------------------------------------------------------------
+    # 1. Train the plain unregularized SGD baseline.
+    # ------------------------------------------------------------
+    baseline_model = baseline_model_fn()
+
+    baseline_loss_fn = make_loss("cross_entropy")
+
+    baseline_optimizer = make_optimizer(
+        baseline_model["params"],
+        lr=0.01,
+        kind="sgd"
+    )
+
+    # Deliberately plain SGD:
+    # no weight decay, no early stopping, no augmentation.
+    train(
+        baseline_model,
+        baseline_loss_fn,
+        baseline_optimizer,
+        x_train,
+        y_train,
+        epochs=100,
+        batch_size=min(32, len(x_train)),
+        seed=seed
+    )
+
+    baseline_val_accuracy, _ = evaluate(baseline_model)
+
+    # ------------------------------------------------------------
+    # 2. Fresh model for the improved training setup.
+    # ------------------------------------------------------------
+    np.random.seed(seed)
+    improved_model = baseline_model_fn()
+
+    loss_fn = make_loss("cross_entropy")
+
+    optimizer = make_optimizer(
+        improved_model["params"],
+        lr=0.005,
+        kind="sgd"
+    )
+
+    # ------------------------------------------------------------
+    # Helpers for copying/restoring the model parameters.
+    # The arrays themselves are never replaced; only their contents
+    # are copied so parameter identity is preserved.
+    # ------------------------------------------------------------
+    def copy_params(params):
+        if isinstance(params, dict):
+            return {
+                key: copy_params(value)
+                for key, value in params.items()
+            }
+
+        if isinstance(params, list):
+            return [copy_params(value) for value in params]
+
+        if isinstance(params, tuple):
+            return tuple(copy_params(value) for value in params)
+
+        if isinstance(params, np.ndarray):
+            return params.copy()
+
+        raise TypeError(f"Unsupported parameter type: {type(params)}")
+
+    def restore_params(params, saved):
+        if isinstance(params, dict):
+            for key in params:
+                restore_params(params[key], saved[key])
+
+        elif isinstance(params, (list, tuple)):
+            for p, s in zip(params, saved):
+                restore_params(p, s)
+
+        elif isinstance(params, np.ndarray):
+            params[...] = saved
+
+        else:
+            raise TypeError(f"Unsupported parameter type: {type(params)}")
+
+    # ------------------------------------------------------------
+    # 3. L2 regularization.
+    #
+    # Add lambda * W to each parameter gradient. Biases are left
+    # unregularized, which is a standard practical choice.
+    # ------------------------------------------------------------
+    weight_decay = 1e-4
+
+    def add_weight_decay(grads, params):
+        if isinstance(params, dict):
+            for key in params:
+                if key not in grads:
+                    continue
+
+                if key == "W":
+                    grads[key][...] += weight_decay * params[key]
+
+        elif isinstance(params, (list, tuple)):
+            for p, g in zip(params, grads):
+                add_weight_decay(g, p)
+
+    # ------------------------------------------------------------
+    # 4. Train with early stopping.
+    #
+    # Validation accuracy is used only to select the best trained
+    # model; predictions are always generated from that model.
+    # ------------------------------------------------------------
+    rng = np.random.RandomState(seed)
+
+    best_accuracy = -np.inf
+    best_params = copy_params(improved_model["params"])
+
+    patience = 20
+    epochs_without_improvement = 0
+    max_epochs = 150
+    batch_size = min(32, len(x_train))
+
+    for _ in range(max_epochs):
+        indices = rng.permutation(len(x_train))
+
+        for start in range(0, len(x_train), batch_size):
+            batch_indices = indices[start:start + batch_size]
+
+            xb = x_train[batch_indices]
+            yb = y_train[batch_indices]
+
+            loss, grads = forward_backward(
+                improved_model,
+                loss_fn,
+                xb,
+                yb
+            )
+
+            add_weight_decay(
+                grads,
+                improved_model["params"]
+            )
+
+            optimizer["step"](grads)
+
+        # Evaluate after the epoch.
+        val_accuracy, _ = evaluate(improved_model)
+
+        if val_accuracy > best_accuracy:
+            best_accuracy = val_accuracy
+            best_params = copy_params(improved_model["params"])
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+
+        if epochs_without_improvement >= patience:
+            break
+
+    # Restore the best validation checkpoint in place.
+    restore_params(
+        improved_model["params"],
+        best_params
+    )
+
+    # ------------------------------------------------------------
+    # 5. Generate the final predictions directly from the restored
+    # improved model.
+    # ------------------------------------------------------------
+    logits, _ = improved_model["forward"](x_val)
+
+    predictions = np.argmax(logits, axis=1).astype(int)
+
+    val_accuracy = float(
+        np.mean(predictions == y_val)
+    )
+
+    # ------------------------------------------------------------
+    # 6. Return the actual measured results.
+    # ------------------------------------------------------------
+    return {
+        "val_accuracy": val_accuracy,
+        "baseline_val_accuracy": float(baseline_val_accuracy),
+        "predictions": predictions,
+        "model": improved_model
+    }
 
