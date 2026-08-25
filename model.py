@@ -131,8 +131,31 @@ def make_activation(kind='relu'):
         "backward": backward
     }
 
-# Step 5 - initialize_weights (not yet solved)
-# TODO: implement
+# Step 5 - initialize_weights
+def initialize_weights(in_dim, out_dim, scheme='he'):
+    """Return (W, b) for a dense layer."""
+    
+    if in_dim <= 0 or out_dim <= 0:
+        raise ValueError("in_dim and out_dim must be positive")
+
+    if scheme == 'he':
+        # He initialization for ReLU networks:
+        # std = sqrt(2 / fan_in)
+        std = np.sqrt(2.0 / in_dim)
+        W = np.random.randn(in_dim, out_dim) * std
+
+    elif scheme == 'xavier':
+        # Xavier/Glorot normal initialization
+        std = np.sqrt(2.0 / (in_dim + out_dim))
+        W = np.random.randn(in_dim, out_dim) * std
+
+    else:
+        raise ValueError(f"Unsupported initialization scheme: {scheme}")
+
+    # Zero bias keeps the initial activations centered.
+    b = np.zeros(out_dim, dtype=float)
+
+    return W, b
 
 # Step 6 - make_loss (not yet solved)
 # TODO: implement
