@@ -258,8 +258,43 @@ def forward_backward(model, loss_fn, x, y):
     # Return gradients in the same per-layer structure as model["params"].
     return float(loss), layer_grads
 
-# Step 9 - make_optimizer (not yet solved)
-# TODO: implement
+# Step 9 - make_optimizer
+def make_optimizer(params, lr=1e-2, kind='sgd'):
+    """Build an optimizer that updates params in place."""
+
+    if lr <= 0:
+        raise ValueError("lr must be positive")
+
+    if kind != 'sgd':
+        raise ValueError(f"Unsupported optimizer kind: {kind}")
+
+    def step(grads):
+        def update(param, grad):
+            # Mutate the existing ndarray in place.
+            param[...] -= lr * grad
+
+        def walk(param_structure, grad_structure):
+            if isinstance(param_structure, dict):
+                for key in param_structure:
+                    walk(param_structure[key], grad_structure[key])
+
+            elif isinstance(param_structure, (list, tuple)):
+                for p, g in zip(param_structure, grad_structure):
+                    walk(p, g)
+
+            elif isinstance(param_structure, np.ndarray):
+                update(param_structure, grad_structure)
+
+            else:
+                raise TypeError(
+                    f"Unsupported parameter type: {type(param_structure)}"
+                )
+
+        walk(params, grads)
+
+    return {
+        "step": step
+    }
 
 # Step 10 - train_step (not yet solved)
 # TODO: implement
