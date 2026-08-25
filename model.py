@@ -296,8 +296,26 @@ def make_optimizer(params, lr=1e-2, kind='sgd'):
         "step": step
     }
 
-# Step 10 - train_step (not yet solved)
-# TODO: implement
+# Step 10 - train_step
+def train_step(model, loss_fn, optimizer, x_batch, y_batch):
+    """Perform one complete optimization step over a minibatch.
+
+    Returns the loss evaluated before the parameter update.
+    """
+
+    # Compute the current loss and gradients.
+    loss, param_grads = forward_backward(
+        model,
+        loss_fn,
+        x_batch,
+        y_batch
+    )
+
+    # Apply exactly one in-place optimizer update.
+    optimizer["step"](param_grads)
+
+    # Return the pre-update loss.
+    return float(loss)
 
 # Step 11 - train (not yet solved)
 # TODO: implement
