@@ -207,31 +207,28 @@ def make_sequential(layers):
 
     def forward(x):
         caches = []
-        current = x
+        out = x
 
         for layer in layers:
-            current, cache = layer["forward"](current)
+            out, cache = layer["forward"](out)
             caches.append(cache)
 
-        return current, caches
+        return out, caches
 
     def backward(dout, caches):
+        dx = dout
         grads_list = [None] * len(layers)
-        current_grad = dout
 
         for i in range(len(layers) - 1, -1, -1):
-            current_grad, grads = layers[i]["backward"](
-                current_grad,
-                caches[i]
-            )
+            dx, grads = layers[i]["backward"](dx, caches[i])
             grads_list[i] = grads
 
-        return current_grad, grads_list
+        return dx, grads_list
 
     return {
+        "params": [layer["params"] for layer in layers],
         "forward": forward,
-        "backward": backward,
-        "params": [layer["params"] for layer in layers]
+        "backward": backward
     }
 
 # Step 8 - forward_backward (not yet solved)
