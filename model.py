@@ -317,8 +317,54 @@ def train_step(model, loss_fn, optimizer, x_batch, y_batch):
     # Return the pre-update loss.
     return float(loss)
 
-# Step 11 - train (not yet solved)
-# TODO: implement
+# Step 11 - train
+def train(model, loss_fn, optimizer, x, y, epochs, batch_size, seed=0):
+    """Run a deterministic minibatch training loop."""
+
+    if epochs < 0:
+        raise ValueError("epochs must be non-negative")
+
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+    n = x.shape[0]
+
+    if n == 0:
+        return [float("nan")] * epochs
+
+    # Create one reproducible RNG for the entire training run.
+    rng = np.random.RandomState(seed)
+
+    history = []
+
+    for _ in range(epochs):
+        # Shuffle the sample indices for this epoch.
+        indices = rng.permutation(n)
+
+        epoch_losses = []
+
+        # Process the entire dataset in minibatches.
+        for start in range(0, n, batch_size):
+            batch_indices = indices[start:start + batch_size]
+
+            x_batch = x[batch_indices]
+            y_batch = y[batch_indices]
+
+            # train_step returns the loss BEFORE this minibatch update.
+            batch_loss = train_step(
+                model,
+                loss_fn,
+                optimizer,
+                x_batch,
+                y_batch
+            )
+
+            epoch_losses.append(float(batch_loss))
+
+        # Mean loss across all minibatches in this epoch.
+        history.append(float(np.mean(epoch_losses)))
+
+    return history
 
 # Step 12 - design_network (not yet solved)
 # TODO: implement
