@@ -157,8 +157,47 @@ def initialize_weights(in_dim, out_dim, scheme='he'):
 
     return W, b
 
-# Step 6 - make_loss (not yet solved)
-# TODO: implement
+# Step 6 - make_loss
+def make_loss(kind='cross_entropy'):
+    """Return a classification loss_fn(logits, labels) -> (loss, d_logits)."""
+
+    if kind != 'cross_entropy':
+        raise ValueError(f"Unsupported loss kind: {kind}")
+
+    def loss_fn(logits, labels):
+        logits = np.asarray(logits, dtype=float)
+        labels = np.asarray(labels, dtype=int)
+
+        batch_size = logits.shape[0]
+
+        # Numerically stable log-sum-exp:
+        # log(sum(exp(logits))) = max(logits) + log(sum(exp(logits - max)))
+        max_logits = np.max(logits, axis=1, keepdims=True)
+        shifted = logits - max_logits
+
+        exp_shifted = np.exp(shifted)
+        sum_exp = np.sum(exp_shifted, axis=1, keepdims=True)
+
+        log_sum_exp = np.log(sum_exp) + max_logits
+
+        # Cross-entropy:
+        # L_i = log(sum(exp(logits_i))) - logits_i[label_i]
+        correct_logits = logits[np.arange(batch_size), labels]
+        per_example_loss = log_sum_exp[:, 0] - correct_logits
+
+        loss = float(np.mean(per_example_loss))
+
+        # Softmax probabilities.
+        probs = exp_shifted / sum_exp
+
+        # dL/dlogits = (softmax - one_hot(labels)) / batch_size
+        d_logits = probs.copy()
+        d_logits[np.arange(batch_size), labels] -= 1.0
+        d_logits /= batch_size
+
+        return loss, d_logits
+
+    return loss_fn
 
 # Step 7 - make_sequential (not yet solved)
 # TODO: implement
