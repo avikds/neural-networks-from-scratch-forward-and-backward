@@ -97,8 +97,39 @@ def make_dense(in_dim, out_dim, weight_init_fn):
         "backward": backward
     }
 
-# Step 4 - make_activation (not yet solved)
-# TODO: implement
+# Step 4 - make_activation
+def make_activation(kind='relu'):
+    """Create a genuinely nonlinear elementwise activation layer."""
+    
+    if kind != 'relu':
+        raise ValueError(f"Unsupported activation kind: {kind}")
+
+    params = {}
+
+    def forward(x):
+        # ReLU: max(0, x)
+        y = np.maximum(0, x)
+
+        # Cache x because the backward pass needs its sign.
+        cache = x
+
+        return y, cache
+
+    def backward(dout, cache):
+        x = cache
+
+        # ReLU derivative:
+        # 0 for x < 0, 1 for x > 0.
+        # At x == 0, choosing 0 is the standard convention.
+        dx = dout * (x > 0)
+
+        return dx, {}
+
+    return {
+        "params": params,
+        "forward": forward,
+        "backward": backward
+    }
 
 # Step 5 - initialize_weights (not yet solved)
 # TODO: implement
