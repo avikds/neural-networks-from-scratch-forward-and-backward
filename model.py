@@ -100,28 +100,30 @@ def make_dense(in_dim, out_dim, weight_init_fn):
 # Step 4 - make_activation
 def make_activation(kind='relu'):
     """Create a genuinely nonlinear elementwise activation layer."""
-    
-    if kind != 'relu':
+
+    if kind not in ('relu', 'tanh'):
         raise ValueError(f"Unsupported activation kind: {kind}")
 
     params = {}
 
     def forward(x):
-        # ReLU: max(0, x)
-        y = np.maximum(0, x)
+        if kind == 'relu':
+            y = np.maximum(0, x)
+        else:  # tanh
+            y = np.tanh(x)
 
-        # Cache x because the backward pass needs its sign.
-        cache = x
+        # Cache the activation output for efficient backward computation.
+        cache = y
 
         return y, cache
 
     def backward(dout, cache):
-        x = cache
+        y = cache
 
-        # ReLU derivative:
-        # 0 for x < 0, 1 for x > 0.
-        # At x == 0, choosing 0 is the standard convention.
-        dx = dout * (x > 0)
+        if kind == 'relu':
+            dx = dout * (y > 0)
+        else:  # tanh
+            dx = dout * (1.0 - y ** 2)
 
         return dx, {}
 
@@ -199,8 +201,38 @@ def make_loss(kind='cross_entropy'):
 
     return loss_fn
 
-# Step 7 - make_sequential (not yet solved)
-# TODO: implement
+# Step 7 - make_sequential
+def make_sequential(layers):
+    """Compose protocol-honoring layers into one sequential model."""
+
+    def forward(x):
+        caches = []
+        current = x
+
+        for layer in layers:
+            current, cache = layer["forward"](current)
+            caches.append(cache)
+
+        return current, caches
+
+    def backward(dout, caches):
+        grads_list = [None] * len(layers)
+        current_grad = dout
+
+        for i in range(len(layers) - 1, -1, -1):
+            current_grad, grads = layers[i]["backward"](
+                current_grad,
+                caches[i]
+            )
+            grads_list[i] = grads
+
+        return current_grad, grads_list
+
+    return {
+        "forward": forward,
+        "backward": backward,
+        "params": [layer["params"] for layer in layers]
+    }
 
 # Step 8 - forward_backward (not yet solved)
 # TODO: implement
