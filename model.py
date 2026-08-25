@@ -366,8 +366,134 @@ def train(model, loss_fn, optimizer, x, y, epochs, batch_size, seed=0):
 
     return history
 
-# Step 12 - design_network (not yet solved)
-# TODO: implement
+# Step 12 - design_network
+def design_network(input_dim, num_classes, seed=0):
+    """Design and train a feedforward network on a nonlinear task."""
+
+    if input_dim < 1:
+        raise ValueError("input_dim must be at least 1")
+
+    if num_classes < 2:
+        raise ValueError("num_classes must be at least 2")
+
+    # ------------------------------------------------------------
+    # 1. Deterministic setup
+    # ------------------------------------------------------------
+    np.random.seed(seed)
+    rng = np.random.RandomState(seed)
+
+    # ------------------------------------------------------------
+    # 2. Generate a genuinely nonlinear classification dataset.
+    #
+    # For input_dim >= 2, the class is determined by x0 * x1.
+    # The sign and magnitude of a product cannot be represented well
+    # by a linear decision boundary.
+    #
+    # For input_dim == 1, use |x0| instead.
+    # ------------------------------------------------------------
+    n_samples = max(800, num_classes * 200)
+
+    x = rng.uniform(-1.0, 1.0, size=(n_samples, input_dim))
+
+    if input_dim == 1:
+        signal = np.abs(x[:, 0])
+
+        # Equal-width nonlinear bands in |x|.
+        scaled = signal * num_classes
+        y = np.floor(scaled).astype(int)
+        y = np.minimum(y, num_classes - 1)
+
+    else:
+        product = x[:, 0] * x[:, 1]
+
+        # Quantile thresholds produce approximately balanced classes.
+        thresholds = np.quantile(
+            product,
+            np.linspace(0.0, 1.0, num_classes + 1)
+        )
+
+        y = np.digitize(
+            product,
+            thresholds[1:-1],
+            right=False
+        ).astype(int)
+
+        # Keep additional dimensions as weak nuisance features.
+        if input_dim > 2:
+            x[:, 2:] *= 0.10
+
+    # ------------------------------------------------------------
+    # 3. Standardize features for stable optimization.
+    # ------------------------------------------------------------
+    mean = np.mean(x, axis=0, keepdims=True)
+    std = np.std(x, axis=0, keepdims=True)
+
+    # Avoid division by zero for degenerate dimensions.
+    std = np.where(std < 1e-8, 1.0, std)
+
+    x = (x - mean) / std
+
+    # ------------------------------------------------------------
+    # 4. Build a nonlinear network.
+    # ------------------------------------------------------------
+    def init_fn(in_dim, out_dim):
+        return initialize_weights(
+            in_dim,
+            out_dim,
+            scheme='he'
+        )
+
+    model = make_sequential([
+        make_dense(input_dim, 64, init_fn),
+        make_activation('relu'),
+        make_dense(64, 64, init_fn),
+        make_activation('relu'),
+        make_dense(64, num_classes, init_fn),
+    ])
+
+    # ------------------------------------------------------------
+    # 5. Loss and optimizer.
+    # ------------------------------------------------------------
+    loss_fn = make_loss('cross_entropy')
+
+    optimizer = make_optimizer(
+        model["params"],
+        lr=0.01,
+        kind='sgd'
+    )
+
+    # ------------------------------------------------------------
+    # 6. Train.
+    # ------------------------------------------------------------
+    train(
+        model,
+        loss_fn,
+        optimizer,
+        x,
+        y,
+        epochs=500,
+        batch_size=64,
+        seed=seed
+    )
+
+    # ------------------------------------------------------------
+    # 7. Evaluate on the exact dataset returned in metrics.
+    # ------------------------------------------------------------
+    logits, _ = model["forward"](x)
+
+    predictions = np.argmax(logits, axis=1)
+
+    accuracy = float(
+        np.mean(predictions == y)
+    )
+
+    metrics = {
+        "accuracy": accuracy,
+        "x": x,
+        "y": y
+    }
+
+    return model, metrics
 
 # Step 13 - improve_generalization (not yet solved)
 # TODO: implement
