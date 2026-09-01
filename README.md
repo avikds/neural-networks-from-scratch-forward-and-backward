@@ -24,6 +24,15 @@ python scaffold.py
 - [x] **12.** design_network
 - [x] **13.** improve_generalization
 
----
+## Results
 
-Built on Deep-ML.
+```
+design_network_accuracy: 0.9962
+initial_batch_loss: 0.687444810499734
+train_step_loss: 0.687444810499734
+after_train_step_loss: 0.6378195833985174
+overfit_loss_start: 0.62087684457059
+overfit_loss_end: 0.017222366745095224
+baseline_val_accuracy: 0.9844
+improved_val_accuracy: 1.0
+```
